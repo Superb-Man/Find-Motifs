@@ -20,6 +20,24 @@ def Score(motifs):
         score += t - max(count.values())
     return score
 
+def getHighestEntropy(t):
+    # total neucleotide = 4 {A,C,G,T}
+    # make almost equal distribution of neucleotide--->entropy tends to be maximized
+    # assume 25% of each neucleotide will appear at least
+    # t >=4 for now
+    entropy = 0.0
+    count = [int(t/4),int(t/4),int(t/4),int(t/4)]
+    # count = [5,1,1,1]
+    rem = t%4
+    for i in range(rem):
+        count[i]+=1
+    for i in range(4):
+        count[i]/= t 
+    entropy = -sum([p * np.log2(p) for p in count])
+
+    return entropy
+
+
 def Entropy(motifs):
     entropy = 0.0
     k = len(motifs[0])
@@ -34,6 +52,12 @@ def Entropy(motifs):
         entropy += -sum([p * np.log2(p) for p in count.values()])
 
     return entropy
+
+
+#using gain Information
+
+def gain(entropy, maxEntropy, k):
+    return ((maxEntropy - entropy)/k)
 
 
 def profileMatrix(motifs):
@@ -81,15 +105,19 @@ def gibbsSampler(dna, k, N):
     best_motifs: list of strings, best motifs found
     """
     t = len(dna)
+    highestEntropy = getHighestEntropy(t)
     motifs = getRandomMotifs(dna, k, t)
     bestMotifs = motifs
-    for j in range(N):
+    gainInfo = gain(Entropy(motifs),highestEntropy*k,k)
+    for j in range(N-1):
         i = random.randrange(t)
         motifs.pop(i)
         profile = profileMatrix(motifs)
         motifs.insert(i, probableKmer(dna[i], k, profile))
-        if Entropy(motifs) < Entropy(bestMotifs):
+        entropy = Entropy(motifs)
+        if gain(entropy,highestEntropy*k,k) > gainInfo :
             bestMotifs = motifs
+            gainInfo = gain(entropy,highestEntropy*k,k)
     return bestMotifs
 
 def MotifsFind(Profile, Dna):
@@ -103,24 +131,32 @@ def MotifsFind(Profile, Dna):
 
 def RandomizedMotifSearch(dna, k, N):
     t = len(dna)
+    highestEntropy = getHighestEntropy(t)
     # randomly select k-mers Motifs = (Motif1, ..., Motift) in each string from Dna
     Motifs = getRandomMotifs(dna, k, t)
     BestMotifs = Motifs
+    gainInfo = gain(Entropy(Motifs),highestEntropy*k,k)
     
-    for j in range(N):
+    while True:
         Profile = profileMatrix(Motifs)
         Motifs = MotifsFind(Profile, dna)
-        if Score(Motifs) < Score(BestMotifs):
+        entropy = Entropy(Motifs)
+        if gain(entropy,highestEntropy*k,k) > gainInfo:
             BestMotifs = Motifs
+            gainInfo = gain(entropy,highestEntropy*k,k)
         else:
             return BestMotifs
 
 def multipleSeedSearch(dna, numSeeds, k, N,func):
     bestMotifs = []
+    highestEntropy = getHighestEntropy(len(dna))
+    gainInfo = 0
     for i in range(numSeeds):
         motifs = func(dna, k, N)
-        if len(bestMotifs) == 0 or Entropy(motifs) < Entropy(bestMotifs):
+        entropy = Entropy(motifs)
+        if len(bestMotifs) == 0 or gain(entropy,highestEntropy*k,k) > gainInfo:
             bestMotifs = motifs
+            gainInfo = gain(entropy,highestEntropy*k,k)
         # print(bestMotifs,Entropy(bestMotifs))
     return bestMotifs
 
@@ -134,12 +170,13 @@ if __name__ == '__main__':
     
     
     # motif= gibbsSampler(dna, 8, 1000)
-    motif = multipleSeedSearch(dna, 100, 8, 1000,gibbsSampler)
+    motif = multipleSeedSearch(dna, 1, 8, 1000,gibbsSampler)
     
 
     print(motif, Entropy(motif))
     print(Score(motif))
-    motif = multipleSeedSearch(dna, 100, 8, 1000,RandomizedMotifSearch)
+    print(gain(Entropy(motif),getHighestEntropy(len(dna))*8,8))
+    motif = multipleSeedSearch(dna, 1, 8, 1000,RandomizedMotifSearch)
     print(motif, Entropy(motif))
     print(Score(motif))
 
